@@ -39,20 +39,61 @@ def findinscreen(screen,pattern_name,ratio=0.75):
     for m,n in [mm for mm in matches if len(mm) == 2]:
         if m.distance < ratio*n.distance:
             good.append(m)
-
-    if len(good)>MIN_MATCH_COUNT:
-#        cv.imwrite('{}.png'.format(rd.randint(0,1000)),screen)
-        src_pts = np.float32([ img_kp[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-        dst_pts = np.float32([ k[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-        M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC,5.0)
-        matchesMask = mask.ravel().tolist()
-        h,w = img.shape
-        pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
-        dst = cv.perspectiveTransform(pts,M)
-        print('find img in {} ms'.format(int(time.time() * 1000 - st)))
-        return dst
-    print('find {} in {} ms'.format(pattern_name,int(time.time() * 1000 - st)))
+    try:
+        if len(good)>MIN_MATCH_COUNT:
+    #        cv.imwrite('{}.png'.format(rd.randint(0,1000)),screen)
+            src_pts = np.float32([ img_kp[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+            dst_pts = np.float32([ k[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+            M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC,5.0)
+            matchesMask = mask.ravel().tolist()
+            h,w = img.shape
+            pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+            dst = cv.perspectiveTransform(pts,M)
+            #print('find img in {} ms'.format(int(time.time() * 1000 - st)))
+            return dst
+    except:
+        pass
+    #print('find {} in {} ms'.format(pattern_name,int(time.time() * 1000 - st)))
     return None
+
+def resize(image, width = None, height = None, inter = cv.INTER_AREA):
+	dim = None
+	(h, w) = image.shape[:2]
+	if width is None and height is None:
+		return image
+
+	if width is None:
+		r = height / float(h)
+		dim = (int(w * r), height)
+	else:
+		r = width / float(w)
+		dim = (width, int(h * r))
+	resized = cv.resize(image, dim, interpolation = inter)
+	return resized
+
+def findinscreen_pm(screen,pattern_name):
+    template,_,_ = patterns[pattern_name]
+    template = cv.cvtColor(template, cv.COLOR_BGR2GRAY)
+    template = cv.Canny(template, 50, 200)
+    (tH, tW) = template.shape[:2]
+    image = screen
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    found = None
+    # loop over the scales of the image
+    for scale in np.linspace(0.2, 1.0, 20)[::-1]:
+        resized = resize(gray, width = int(gray.shape[1] * scale))
+        r = gray.shape[1] / float(resized.shape[1])
+        if resized.shape[0] < tH or resized.shape[1] < tW:
+                break
+        edged = cv.Canny(resized, 50, 200)
+        result = cv.matchTemplate(edged, template, cv.TM_CCOEFF)
+        (_, maxVal, _, maxLoc) = cv.minMaxLoc(result)
+        if found is None or maxVal > found[0]:
+            found = (maxVal, maxLoc, r)
+    (_, maxLoc, r) = found
+    (startX, startY) = (int(maxLoc[0] * r), int(maxLoc[1] * r))
+    (endX, endY) = (int((maxLoc[0] + tW) * r), int((maxLoc[1] + tH) * r))
+    return ((startX,startY),(endX,endY))
 
 
 
